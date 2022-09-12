@@ -1,0 +1,2 @@
+[workspace]
+members = ["sanatio", "sanatio_derive"]
