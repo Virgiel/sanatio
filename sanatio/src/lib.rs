@@ -1,8 +1,9 @@
 use std::borrow::Cow;
 
 use paste::paste;
-use phonenumber::PhoneNumber;
+pub use phonenumber::PhoneNumber;
 pub use sanatio_derive::*;
+pub use url::Url;
 
 pub type Result<T> = std::result::Result<T, Cow<'static, str>>;
 
