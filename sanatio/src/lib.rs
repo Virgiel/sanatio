@@ -1,6 +1,5 @@
 use std::borrow::Cow;
 
-use paste::paste;
 pub use phonenumber::PhoneNumber;
 pub use sanatio_derive::*;
 pub use url::Url;
@@ -81,15 +80,6 @@ pub fn longitude(lng: f32) -> Result<f32> {
     }
 }
 
-macro_rules! optional {
-    ($fun:ident, $in:ty, $out:ty) => {
-        paste! { pub fn [<opt_$fun>] (v: Option<$in>) -> Result<Option<$out>> {
-                v.map($fun).transpose()
-            }
-        }
-    };
+pub fn opt<In, Out>(f: fn(In) -> Result<Out>) -> impl Fn(Option<In>) -> Result<Option<Out>> {
+    move |v| v.map(f).transpose()
 }
-
-optional!(email, String, String);
-optional!(international_phone_number, String, PhoneNumber);
-optional!(secure_url, url::Url, url::Url);
