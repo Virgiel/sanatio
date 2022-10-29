@@ -19,6 +19,20 @@ pub fn derive(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
     } else {
         abort!(name, "#[derive(Validate)] only work on named struct")
     };
+    let attrs: Vec<_> = input
+        .attrs
+        .iter()
+        .filter(|it| it.path.to_token_stream().to_string() == "validate")
+        .collect();
+    let mut validation = None;
+    if attrs.len() > 1 {
+        abort!(
+            attrs.last().unwrap(),
+            "cannot have more than one validation step"
+        )
+    } else if let Some(attr) = attrs.first() {
+        validation = Some(&attr.tokens);
+    }
     let fields: Vec<_> = fields
         .into_iter()
         .map(|(attrs, ident, ty)| {
@@ -78,6 +92,12 @@ pub fn derive(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
     let action: Vec<_> = fields.iter().map(|(_, _, it, _)| it).collect();
     let serde: Vec<_> = fields.iter().map(|(_, _, _, it)| it).collect();
 
+    let validation = validation.map(|action| {
+        quote!(
+            let tmp = #action(tmp)?;
+        )
+    });
+
     let expanded = quote!(
         impl<'de> serde::Deserialize<'de> for #name {
             fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
@@ -93,9 +113,11 @@ pub fn derive(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
                     type Error = std::borrow::Cow<'static, str>; // Use String as error type just for simplicity
 
                     fn try_from(v: Input) -> Result<Self, Self::Error> {
-                        Ok(Self {
+                        let tmp = Self {
                             #(#names: #action(v.#names)?,)*
-                        })
+                        };
+                        #validation;
+                        return Ok(tmp);
                     }
                 }
 
