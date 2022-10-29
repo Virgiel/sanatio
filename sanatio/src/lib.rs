@@ -27,7 +27,7 @@ pub fn indexes<const N: usize>(mut v: Vec<i16>) -> Result<Vec<i16>> {
     v.sort_unstable();
     v.dedup();
     // TODO better message
-    (v.len() <= N && v.iter().all(|i| *i < N as i16))
+    (v.len() <= N && v.iter().all(|i| *i < N as i16 && *i >= 0))
         .then(|| v)
         .ok_or("bad index".into())
 }

@@ -5,7 +5,7 @@ edition = "2021"
 
 [dependencies]
 sanatio_derive = { path = "../sanatio_derive" }
-serde = "1.0.145"
+serde = "1.0"
 # Url parsing and validation
 url = { version = "2", features = ["serde"] }
 # Phone number parsing and validation
