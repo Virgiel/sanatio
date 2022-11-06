@@ -1,6 +1,6 @@
 use std::str::FromStr;
 
-use proc_macro2::TokenStream;
+use proc_macro2::{TokenStream, TokenTree};
 use proc_macro_error::{abort, proc_macro_error};
 use quote::{quote, ToTokens};
 use syn::{parse_macro_input, DeriveInput};
@@ -36,41 +36,38 @@ pub fn derive(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
     let fields: Vec<_> = fields
         .into_iter()
         .map(|(attrs, ident, ty)| {
-            let validate: Vec<_> = attrs
-                .iter()
-                .filter(|it| it.path.to_token_stream().to_string() == "validate")
-                .collect();
             let serde: Vec<_> = attrs
                 .iter()
                 .filter(|it| it.path.to_token_stream().to_string() == "serde")
                 .cloned()
                 .collect();
+            let mut validate = attrs
+                .into_iter()
+                .filter(|it| it.path.to_token_stream().to_string() == "validate");
 
-            match *validate.as_slice() {
-                [attr] => {
-                    let args = attr.tokens.to_string();
-                    let mut args = args
-                        .trim()
-                        .strip_prefix('(')
-                        .unwrap()
-                        .strip_suffix(')')
-                        .unwrap()
-                        .split(',');
-                    let Some(fun) = args.next().map(|s| TokenStream::from_str(s).unwrap()) else {
-                        abort!(attr.tokens, "missing validation function")
-                    };
-                    let ty = args
-                        .next()
-                        .map(|s| TokenStream::from_str(s).unwrap())
-                        .unwrap_or_else(|| ty.to_token_stream());
-                    if args.next().is_some() {
-                        abort!(attr.tokens, "to many validation args")
-                    }
-                    (ident, ty, fun, serde)
-                }
-                [.., last] => abort!(last, "cannot have more than one validation step"),
-                [] => abort!(ident, "missing a validation"),
+            let Some(attr) = validate.next() else {
+                abort!(ident, "missing a validation")
+            };
+            if let Some(attr) = validate.next() {
+                abort!(attr, "cannot have more than one validation step")
             }
+            let Some(TokenTree::Group(g)) = attr.tokens.into_iter().next() else {
+                abort!(ident, "missing validation metadata")
+            };
+            // TODO find a way to do this without relying on string parsing or move all logic to string parsing
+            let args = g.stream().to_string();
+            let mut args = args.split(',');
+            let Some(fun) = args.next().map(|s| TokenStream::from_str(s).unwrap()) else {
+                abort!(ident, "missing validation function")
+            };
+            let ty = args
+                .next()
+                .map(|s| TokenStream::from_str(s).unwrap())
+                .unwrap_or_else(|| ty.to_token_stream());
+            if args.next().is_some() {
+                abort!(ident, "to many validation args")
+            }
+            (ident, ty, fun, serde)
         })
         .collect();
     let names = fields.iter().map(|(it, _, _, _)| it);

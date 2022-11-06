@@ -9,29 +9,34 @@ use sanatio::{
 use std::borrow::Cow;
 
 #[derive(Validate)]
-pub struct ProInput {
-   /// Use a provided validation function
+pub struct Data {
+   // Use a provided validation function
    #[validate(latitude)]
    pub lat: f32,
-   /// Use a dummy validation function to perform no verification
+   // Use a dummy validation function to perform no verification
    #[validate(pass)]
    pub photo: Vec<u8>,
-   /// Use provided validation function with constant generic
+   // Use provided validation function with constant generic
    #[validate(max_txt::<50>)]
    pub name: String,
-   /// Use a custom validation function and specify a different input type than the output type
+   // Use a custom validation function and specify a different input type than the output type
    #[validate(sex, String)]
    pub sex: i16,
-   /// Compose validation function to handle optional types
+   // Compose validation function to handle optional types
    #[validate(opt(secure_url))]
    pub link: Option<Url>,
 }
 
-/// Validation function can take and return any type, errors are always strings
+// Validation function errors are always strings
 fn sex(v: String) -> Result<i16, Cow<'static, str>> {
    ["F", "H"].iter()
     .position(|s| *s == v)
     .ok_or_else(|| "Invalid sex index".into())
     .map(|pos| pos as i16)
+}
+
+// You can then deserialize this type and validate its content without changing your code
+fn usage(json: &[u8]) -> serde_json::Result<Data> {
+    serde_json::from_slice(json)
 }
 ```
