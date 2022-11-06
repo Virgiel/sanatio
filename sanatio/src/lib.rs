@@ -18,10 +18,6 @@ pub fn max_txt<const N: usize>(str: String) -> Result<String> {
     }
 }
 
-pub fn opt_max_txt<const N: usize>(str: Option<String>) -> Result<Option<String>> {
-    str.map(max_txt::<N>).transpose()
-}
-
 /// Sorted list of unique number between 0 and N excluded
 pub fn indexes<const N: usize>(mut v: Vec<i16>) -> Result<Vec<i16>> {
     v.sort_unstable();
@@ -64,6 +60,7 @@ pub fn secure_url(url: url::Url) -> Result<url::Url> {
         .ok_or("not https".into())
 }
 
+/// Valid latitude coordinate
 pub fn latitude(lat: f32) -> Result<f32> {
     if (-90.0..=90.).contains(&lat) {
         Ok(lat)
@@ -72,6 +69,7 @@ pub fn latitude(lat: f32) -> Result<f32> {
     }
 }
 
+/// Valid longitude coordinate
 pub fn longitude(lng: f32) -> Result<f32> {
     if (-180.0..=180.).contains(&lng) {
         Ok(lng)
@@ -80,6 +78,7 @@ pub fn longitude(lng: f32) -> Result<f32> {
     }
 }
 
+/// Make a validated type optional
 pub fn opt<In, Out>(f: fn(In) -> Result<Out>) -> impl Fn(Option<In>) -> Result<Option<Out>> {
     move |v| v.map(f).transpose()
 }

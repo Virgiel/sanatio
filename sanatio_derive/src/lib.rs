@@ -28,7 +28,7 @@ pub fn derive(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
     if attrs.len() > 1 {
         abort!(
             attrs.last().unwrap(),
-            "cannot have more than one validation step"
+            "cannot have more than one final validation type"
         )
     } else if let Some(attr) = attrs.first() {
         validation = Some(&attr.tokens);
@@ -48,49 +48,37 @@ pub fn derive(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
 
             match *validate.as_slice() {
                 [attr] => {
-                    let args = &attr.tokens;
-                    let args = args.into_token_stream().to_string();
-                    let args = args.trim_matches(|c| c == '(' || c == ')').split(',');
-                    let mut fun = None;
-                    let mut in_ty = None;
-                    let mut opt = false;
-                    for word in args {
-                        if word == "opt" {
-                            opt = true;
-                            continue;
-                        }
-
-                        if fun.is_none() {
-                            let str = if opt {
-                                format!("::sanatio::opt({word})")
-                            } else {
-                                word.into()
-                            };
-                            fun = Some(TokenStream::from_str(&str).unwrap())
-                        } else if in_ty.is_none() {
-                            let str = if opt {
-                                format!("Option<{word}>")
-                            } else {
-                                word.into()
-                            };
-                            in_ty = Some(TokenStream::from_str(&str).unwrap())
-                        } else {
-                            abort!(attr, "to much args")
-                        }
+                    let args = attr.tokens.to_string();
+                    let mut args = args
+                        .trim()
+                        .strip_prefix('(')
+                        .unwrap()
+                        .strip_suffix(')')
+                        .unwrap()
+                        .split(',');
+                    let Some(fun) = args.next().map(|s| TokenStream::from_str(s).unwrap()) else {
+                        abort!(attr.tokens, "missing validation function")
+                    };
+                    let ty = args
+                        .next()
+                        .map(|s| TokenStream::from_str(s).unwrap())
+                        .unwrap_or_else(|| ty.to_token_stream());
+                    if args.next().is_some() {
+                        abort!(attr.tokens, "to many validation args")
                     }
-
-                    let ty = in_ty.unwrap_or_else(|| ty.to_token_stream());
-                    (ident, ty, fun.expect("Missing validation function"), serde)
+                    (ident, ty, fun, serde)
                 }
                 [.., last] => abort!(last, "cannot have more than one validation step"),
-                [] => abort!(ident, "is missing a validation"),
+                [] => abort!(ident, "missing a validation"),
             }
         })
         .collect();
-    let names: Vec<_> = fields.iter().map(|(it, _, _, _)| it).collect();
-    let types: Vec<_> = fields.iter().map(|(_, it, _, _)| it).collect();
-    let action: Vec<_> = fields.iter().map(|(_, _, it, _)| it).collect();
-    let serde: Vec<_> = fields.iter().map(|(_, _, _, it)| it).collect();
+    let names = fields.iter().map(|(it, _, _, _)| it);
+    let types = fields.iter().map(|(_, it, _, _)| it);
+    let action = fields.iter().map(|(_, _, it, _)| it);
+    let serde = fields.iter().map(|(_, _, _, it)| it);
+    let names1 = names.clone();
+    let names2 = names.clone();
 
     let validation = validation.map(|action| {
         quote!(
@@ -114,9 +102,9 @@ pub fn derive(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
 
                     fn try_from(v: Input) -> Result<Self, Self::Error> {
                         let tmp = Self {
-                            #(#names: #action(v.#names)?,)*
+                            #(#names1: (#action)(v.#names2)?,)*
                         };
-                        #validation;
+                        #validation
                         return Ok(tmp);
                     }
                 }
