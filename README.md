@@ -4,8 +4,9 @@ Generate a custom `serde` deserialization derive that validates and normalizes t
 ## Examples
 ```rust
 use sanatio::{
-    email, latitude, longitude, max_txt, pass, secure_url, opt
+    email, latitude, longitude, max_txt, pass, secure_url, opt, Url, Validate
 };
+use std::borrow::Cow;
 
 #[derive(Validate)]
 pub struct ProInput {
@@ -14,7 +15,7 @@ pub struct ProInput {
    pub lat: f32,
    /// Use a dummy validation function to perform no verification
    #[validate(pass)]
-   pub photo: Option<Photo>,
+   pub photo: Vec<u8>,
    /// Use provided validation function with constant generic
    #[validate(max_txt::<50>)]
    pub name: String,
@@ -28,7 +29,7 @@ pub struct ProInput {
 
 /// Validation function can take and return any type, errors are always strings
 fn sex(v: String) -> Result<i16, Cow<'static, str>> {
-   SEX.iter()
+   ["F", "H"].iter()
     .position(|s| *s == v)
     .ok_or_else(|| "Invalid sex index".into())
     .map(|pos| pos as i16)
