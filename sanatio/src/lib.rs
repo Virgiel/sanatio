@@ -1,3 +1,38 @@
+//! Generate a custom `serde` deserialization derive that validates and normalizes the data during deserialization.
+//! # Examples
+//! ```
+//! use sanatio::{
+//!     email, latitude, longitude, max_txt, pass, secure_url, opt
+//! };
+//!
+//! #[derive(Validate)]
+//! pub struct ProInput {
+//!    /// Use a provided validation function
+//!    #[validate(latitude)]
+//!    pub lat: f32,
+//!    /// Use a dummy validation function to perform no verification
+//!    #[validate(pass)]
+//!    pub photo: Option<Photo>,
+//!    /// Use provided validation function with constant generic
+//!    #[validate(max_txt::<50>)]
+//!    pub name: String,
+//!    /// Use a custom validation function and specify a different input type than the output type
+//!    #[validate(sex, String)]
+//!    pub sex: i16,
+//!    /// Compose validation function to handle optional types
+//!    #[validate(opt(secure_url))]
+//!    pub link: Option<Url>,
+//! }
+//!
+//! /// Validation function can take and return any type, errors are always strings
+//! fn sex(v: String) -> Result<i16, Cow<'static, str>> {
+//!    SEX.iter()
+//!     .position(|s| *s == v)
+//!     .ok_or_else(|| "Invalid sex index".into())
+//!     .map(|pos| pos as i16)
+//! }
+//! ```
+
 use std::borrow::Cow;
 
 pub use phonenumber::PhoneNumber;
