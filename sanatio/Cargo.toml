@@ -8,7 +8,7 @@ sanatio_derive = { path = "../sanatio_derive" }
 # Url parsing and validation
 url = { version = "2", features = ["serde"] }
 # Phone number parsing and validation
-phonenumber = "0.3"
+phonenumber = { git = "https://github.com/Virgiel/rust-phonenumber" }
 # Email parsing and validation
 fast_chemail = "0.9"
 

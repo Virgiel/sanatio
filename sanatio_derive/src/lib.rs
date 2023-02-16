@@ -57,7 +57,7 @@ pub fn derive(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
             // TODO find a way to do this without relying on string parsing or move all logic to string parsing
             let args = g.stream().to_string();
             let mut args = args.split(',');
-            let Some(fun) = args.next().map(|s| TokenStream::from_str(s).unwrap()) else {
+            let Some(action) = args.next().map(|s| TokenStream::from_str(s).unwrap()) else {
                 abort!(ident, "missing validation function")
             };
             let ty = args
@@ -67,7 +67,7 @@ pub fn derive(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
             if args.next().is_some() {
                 abort!(ident, "to many validation args")
             }
-            (ident, ty, fun, serde)
+            (ident, ty, action, serde)
         })
         .collect();
     let names = fields.iter().map(|(it, _, _, _)| it);
