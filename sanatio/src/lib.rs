@@ -41,7 +41,7 @@
 
 use std::borrow::Cow;
 
-pub use phonenumber::PhoneNumber;
+pub use rlibphonenumber::PhoneNumber;
 pub use sanatio_derive::*;
 pub use url::Url;
 
@@ -65,7 +65,7 @@ pub fn indexes<const N: usize>(mut v: Vec<i16>) -> Result<Vec<i16>> {
     v.dedup();
     // TODO better message
     (v.len() <= N && v.iter().all(|i| *i < N as i16 && *i >= 0))
-        .then(|| v)
+        .then_some(v)
         .ok_or("bad index".into())
 }
 
@@ -84,12 +84,13 @@ pub fn email(v: String) -> Result<String> {
 
 /// Valid phone number formatted with international convention
 pub fn international_phone_number(v: String) -> Result<PhoneNumber> {
-    phonenumber::parse(Some(phonenumber::country::FR), &v)
+    rlibphonenumber::PHONE_NUMBER_UTIL
+        .parse_with_default_region(v.as_str(), "FR")
         .map_err(|err| err.to_string().into())
         .and_then(|number| {
             number
                 .is_valid()
-                .then(|| number)
+                .then_some(number)
                 .ok_or("invalid phone number".into())
         })
 }
@@ -97,7 +98,7 @@ pub fn international_phone_number(v: String) -> Result<PhoneNumber> {
 /// HTTPS url
 pub fn secure_url(url: url::Url) -> Result<url::Url> {
     (url.scheme() == "https")
-        .then(|| url)
+        .then_some(url)
         .ok_or("not https".into())
 }
 

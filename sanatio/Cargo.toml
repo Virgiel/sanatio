@@ -1,14 +1,14 @@
 [package]
 name = "sanatio"
 version = "0.1.0"
-edition = "2021"
+edition.workspace = true
 
 [dependencies]
 sanatio_derive = { path = "../sanatio_derive" }
 # Url parsing and validation
 url = { version = "2", features = ["serde"] }
 # Phone number parsing and validation
-phonenumber = "0.3.2+8.13.9"
+rlibphonenumber = "1"
 # Email parsing and validation
 fast_chemail = "0.9"
 

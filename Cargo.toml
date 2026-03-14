@@ -1,2 +1,5 @@
 [workspace]
 members = ["sanatio", "sanatio_derive"]
+resolver = "2"
+
+package.edition = "2024"

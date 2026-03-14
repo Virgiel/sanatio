@@ -1,120 +1,154 @@
-use std::str::FromStr;
+use proc_macro::TokenStream;
+use proc_macro2::TokenStream as TokenStream2;
+use quote::quote;
+use syn::{
+    Data, DeriveInput, Error, Expr, Fields, Result, Token, Type,
+    parse::{Parse, ParseStream},
+    parse_macro_input,
+};
 
-use proc_macro2::{TokenStream, TokenTree};
-use proc_macro_error::{abort, proc_macro_error};
-use quote::{quote, ToTokens};
-use syn::{parse_macro_input, DeriveInput};
+/// Represents the arguments inside `#[validate(action, OptionalType)]`
+struct ValidateArgs {
+    action: Expr,
+    ty: Option<Type>,
+}
+
+impl Parse for ValidateArgs {
+    fn parse(input: ParseStream) -> Result<Self> {
+        // Parse the first argument as an expression (e.g., a function path or closure)
+        let action: Expr = input.parse()?;
+
+        // Check if there is a comma, and if so, parse the optional Type replacement
+        let ty = if input.peek(Token![,]) {
+            input.parse::<Token![,]>()?;
+            Some(input.parse()?)
+        } else {
+            None
+        };
+
+        // Ensure there are no leftover, unparsed arguments
+        if !input.is_empty() {
+            return Err(input.error("too many validation args"));
+        }
+
+        Ok(Self { action, ty })
+    }
+}
 
 #[proc_macro_derive(Validate, attributes(validate, serde))]
-#[proc_macro_error]
-pub fn derive(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
-    // Parse the input tokens into a syntax tree.
+pub fn derive(input: TokenStream) -> TokenStream {
     let input = parse_macro_input!(input as DeriveInput);
+
+    // Delegate to an inner function to utilize the `?` operator for clean error handling
+    expand(input)
+        .unwrap_or_else(Error::into_compile_error)
+        .into()
+}
+
+fn expand(input: DeriveInput) -> Result<TokenStream2> {
     let name = input.ident;
-    let fields = if let syn::Data::Struct(syn::DataStruct { fields, .. }) = input.data {
-        fields
-            .into_iter()
-            .map(|it| (it.attrs, it.ident.unwrap(), it.ty))
-            .collect::<Vec<_>>()
-    } else {
-        abort!(name, "#[derive(Validate)] only work on named struct")
+
+    // 1. Ensure we are operating on a named struct
+    let Data::Struct(data_struct) = input.data else {
+        return Err(Error::new_spanned(
+            name,
+            "#[derive(Validate)] only works on structs",
+        ));
     };
-    let attrs: Vec<_> = input
-        .attrs
-        .iter()
-        .filter(|it| it.path.to_token_stream().to_string() == "validate")
-        .collect();
-    let mut validation = None;
-    if attrs.len() > 1 {
-        abort!(
-            attrs.last().unwrap(),
-            "cannot have more than one final validation type"
-        )
-    } else if let Some(attr) = attrs.first() {
-        validation = Some(&attr.tokens);
+    let Fields::Named(fields_named) = data_struct.fields else {
+        return Err(Error::new_spanned(
+            name,
+            "#[derive(Validate)] only works on named structs",
+        ));
+    };
+
+    // 2. Extract struct-level #[validate(...)] attribute
+    let mut struct_validation: Option<Expr> = None;
+    for attr in &input.attrs {
+        if attr.path().is_ident("validate") {
+            if struct_validation.is_some() {
+                return Err(Error::new_spanned(
+                    attr,
+                    "cannot have more than one final validation type",
+                ));
+            }
+            struct_validation = Some(attr.parse_args()?);
+        }
     }
-    let fields: Vec<_> = fields
-        .into_iter()
-        .map(|(attrs, ident, ty)| {
-            let serde: Vec<_> = attrs
-                .iter()
-                .filter(|it| it.path.to_token_stream().to_string() == "serde")
-                .cloned()
-                .collect();
-            let mut validate = attrs
-                .into_iter()
-                .filter(|it| it.path.to_token_stream().to_string() == "validate");
 
-            let Some(attr) = validate.next() else {
-                abort!(ident, "missing a validation")
-            };
-            if let Some(attr) = validate.next() {
-                abort!(attr, "cannot have more than one validation step")
-            }
-            let Some(TokenTree::Group(g)) = attr.tokens.into_iter().next() else {
-                abort!(ident, "missing validation metadata")
-            };
-            // TODO find a way to do this without relying on string parsing or move all logic to string parsing
-            let args = g.stream().to_string();
-            let mut args = args.split(',');
-            let Some(action) = args.next().map(|s| TokenStream::from_str(s).unwrap()) else {
-                abort!(ident, "missing validation function")
-            };
-            let ty = args
-                .next()
-                .map(|s| TokenStream::from_str(s).unwrap())
-                .unwrap_or_else(|| ty.to_token_stream());
-            if args.next().is_some() {
-                abort!(ident, "to many validation args")
-            }
-            (ident, ty, action, serde)
-        })
-        .collect();
-    let names = fields.iter().map(|(it, _, _, _)| it);
-    let types = fields.iter().map(|(_, it, _, _)| it);
-    let action = fields.iter().map(|(_, _, it, _)| it);
-    let serde = fields.iter().map(|(_, _, _, it)| it);
-    let names1 = names.clone();
-    let names2 = names.clone();
-
-    let validation = validation.map(|action| {
-        quote!(
-            let tmp = #action(tmp)?;
-        )
+    let validation_step = struct_validation.map(|action| {
+        quote! { let tmp = (#action)(tmp)?; }
     });
 
-    let expanded = quote!(
+    // 3. Extract and parse field-level attributes
+    let mut field_names = Vec::new();
+    let mut field_types = Vec::new();
+    let mut field_actions = Vec::new();
+    let mut field_serde_attrs = Vec::new();
+
+    for field in fields_named.named {
+        let ident = field.ident.as_ref().unwrap();
+        let mut validate_args: Option<ValidateArgs> = None;
+        let mut serde_attrs = Vec::new();
+
+        for attr in &field.attrs {
+            if attr.path().is_ident("serde") {
+                serde_attrs.push(attr.clone());
+            } else if attr.path().is_ident("validate") {
+                if validate_args.is_some() {
+                    return Err(Error::new_spanned(
+                        attr,
+                        "cannot have more than one validation step",
+                    ));
+                }
+                // Safely parse tokens using our custom Parse implementation
+                validate_args = Some(attr.parse_args::<ValidateArgs>()?);
+            }
+        }
+
+        let Some(args) = validate_args else {
+            return Err(Error::new_spanned(ident, "missing a validation attribute"));
+        };
+
+        field_names.push(ident.clone());
+        field_types.push(args.ty.unwrap_or(field.ty)); // Fallback to original field type
+        field_actions.push(args.action);
+        field_serde_attrs.push(serde_attrs);
+    }
+
+    // 4. Generate the final output
+    let expanded = quote! {
         impl<'de> serde::Deserialize<'de> for #name {
-            fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+            fn deserialize<D>(deserializer: D) -> std::result::Result<Self, D::Error>
             where
                 D: serde::Deserializer<'de>,
             {
                 #[derive(serde::Deserialize)]
                 pub struct Input {
-                    #(#(#serde)* #names: #types,)*
+                    #(
+                        #(#field_serde_attrs)* #field_names: #field_types,
+                    )*
                 }
 
                 impl TryFrom<Input> for #name {
-                    type Error = std::borrow::Cow<'static, str>; // Use String as error type just for simplicity
+                    type Error = std::borrow::Cow<'static, str>;
 
-                    fn try_from(v: Input) -> Result<Self, Self::Error> {
+                    fn try_from(v: Input) -> std::result::Result<Self, Self::Error> {
                         let tmp = Self {
-                            #(#names1: (#action)(v.#names2)?,)*
+                            #( #field_names: (#field_actions)(v.#field_names)?, )*
                         };
-                        #validation
-                        return Ok(tmp);
+                        #validation_step
+                        Ok(tmp)
                     }
                 }
 
-
-                Result::and_then(
+                std::result::Result::and_then(
                     <Input as serde::Deserialize>::deserialize(deserializer),
                     |v| TryFrom::try_from(v).map_err(serde::de::Error::custom),
                 )
             }
         }
+    };
 
-
-    );
-    proc_macro::TokenStream::from(expanded)
+    Ok(expanded)
 }
